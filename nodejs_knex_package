@@ -120,6 +120,51 @@ app.post('/sales', async (req, res) => {
     }
 });
 
+app.post('/receipts', async (req, res) => {
+  try {
+    const { id, receipt_date, from_ledger, to_ledger, company, amount, remarks, previous_balance, colsing_balance } = req.body;
+    
+    // Parse the receipt_date from the request body
+    const receiptDate = DateTime.fromFormat(receipt_date, 'dd/MM/yyyy').toISODate();
+
+    // Find the maximum invoice number for the company
+    let maxID = await db('receipts').where('company_id', company.id).max('invoice_no').first();
+    maxID = maxID.max || 0; // If maxID is null, set it to 0
+
+    let rs;
+    if (id > 0) {
+      rs = await db('receipts').where('id', id).first();
+      rs.updated_user_id = req.session.user ? req.session.user.id : 0;
+    } else {
+      rs = {
+        invoice_no: maxID + 1,
+        created_user_id: req.session.user ? req.session.user.id : 0,
+      };
+    }
+
+    rs.receipt_date = receiptDate;
+    rs.from_id = from_ledger.id;
+    rs.to_id = to_ledger.id;
+    rs.company_id = company.id;
+    rs.amount = amount;
+    rs.remarks = remarks;
+    rs.previous_balance = previous_balance || 0;
+    rs.colsing_balance = colsing_balance || 0;
+
+    await db.transaction(async (trx) => {
+      if (id > 0) {
+        await trx('receipts').where('id', id).update(rs);
+      } else {
+        await trx('receipts').insert(rs);
+      }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 const getTaxListAttribute = async (transactionDate, companyId) => {
     try {
